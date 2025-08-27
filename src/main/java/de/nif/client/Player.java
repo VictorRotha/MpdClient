@@ -30,7 +30,9 @@ public class Player {
 
     public Player(int numberOfThreads) {
         connection = new Connection();
-        threadPool = Executors.newFixedThreadPool(numberOfThreads);
+
+        threadPool = (numberOfThreads > 0 ) ? Executors.newFixedThreadPool(numberOfThreads) : null;
+
         channelHelper = new ChannelHelper(connection, threadPool);
 
     }
@@ -38,14 +40,21 @@ public class Player {
     public void connect(String host, int port, Callback<String> callback) {
         System.out.println("player connect " + host + " " + port);
 
-        threadPool.execute(() -> {
+        if (threadPool != null)
+            threadPool.execute(() -> connectExecute(host, port, callback));
+        else
+            connectExecute(host, port, callback);
 
-            Result<String> result = connection.connect(host, port);
-            if (callback != null) {
-                callback.onResult(result);
-            }
 
-        });
+
+    }
+
+    private void connectExecute(String host, int port, Callback<String> callback) {
+
+        Result<String> result = connection.connect(host, port);
+        if (callback != null) {
+            callback.onResult(result);
+        }
 
     }
 
@@ -73,7 +82,7 @@ public class Player {
 
     public void query(Callback<List<String>> callback, String... commands) {
 
-        channelHelper.simpleQueryASync(callback, commands);
+        channelHelper.simpleQuery(callback, commands);
 
     }
 
@@ -91,7 +100,7 @@ public class Player {
 
     public void queryQueue(Callback<List<String>> callback) {
         String command = "playlistinfo";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
@@ -99,34 +108,34 @@ public class Player {
 
     public void queryPlaylists(Callback<List<String>> callback) {
         String command = "listplaylists";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void queryPlaylistByName(String name, Callback<List<String>> callback) {
         String command = "listplaylistinfo \"" + name + "\"";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void queryAlbumArtists(Callback<List<String>> callback) {
         String command = "list albumartist";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void queryArtists(Callback<List<String>> callback) {
         String command = "list artist";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
     public void queryAlbumsByArtist(String albumArtist, Callback<List<String>> callback) {
         String command = "list album albumartist \"" + albumArtist + "\"";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
     public void querySongsByAlbum(String albumArtist, String album, Callback<List<String>> callback) {
         String command = String.format("find \"((albumartist == \\\"%s\\\") AND (album == \\\"%s\\\"))\"", albumArtist, album);
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
@@ -144,7 +153,15 @@ public class Player {
     }
 
     public void addArtistToQueue(String artist, boolean clear, int pos, Callback<List<String>> callback) {
-        threadPool.execute(() -> {
+
+        if (threadPool != null)
+            threadPool.execute(() -> addArtistToQueueExecute(artist, clear, pos, callback));
+        else
+            addArtistToQueueExecute(artist, clear, pos, callback);
+
+    }
+
+    private void addArtistToQueueExecute(String artist, boolean clear, int pos, Callback<List<String>> callback) {
 
             Channel channel = new Channel(getConnection());
 
@@ -174,8 +191,6 @@ public class Player {
             if (callback != null)
                 callback.onResult(result);
 
-        });
-
     }
 
 
@@ -203,13 +218,18 @@ public class Player {
         }
         String command = builder.toString();
 
-        channelHelper.simpleQueryASync(callback, command.trim());
+        channelHelper.simpleQuery(callback, command.trim());
     }
 
-
     public void addAlbumToPlaylist(String albumArtist, String album, String playlist, Callback<List<String>> callback) {
+        if (threadPool !=  null)
+            threadPool.execute(() -> addAlbumToPlaylistExecute(albumArtist, album, playlist, callback));
+        else
+            addAlbumToPlaylistExecute(albumArtist, album, playlist, callback);
 
-        threadPool.execute(() -> {
+    }
+
+    private void addAlbumToPlaylistExecute(String albumArtist, String album, String playlist, Callback<List<String>> callback) {
 
             Channel channel = new Channel(getConnection());
 
@@ -229,12 +249,16 @@ public class Player {
             if (callback != null)
                 callback.onResult(result);
 
-        });
     }
-
     public void addArtistToPlaylist(String artist, String playlist, Callback<List<String>> callback) {
 
-        threadPool.execute(() -> {
+        if (threadPool !=  null)
+            threadPool.execute(() -> addArtistToPlaylistExecute(artist, playlist, callback));
+        else
+            addArtistToPlaylistExecute(artist, playlist, callback);
+    }
+
+    private void addArtistToPlaylistExecute(String artist, String playlist, Callback<List<String>> callback) {
 
             Channel channel = new Channel(getConnection());
 
@@ -253,15 +277,21 @@ public class Player {
 
             if (callback != null)
                 callback.onResult(result);
-
-        });
     }
 
 
 
 
     public void addAlbumToQueue(String albumArtist, String album, Callback<List<String>> callback) {
-        threadPool.execute(() -> {
+
+        if (threadPool != null)
+            threadPool.execute(() -> addAlbumToQueueExecute(albumArtist, album, callback));
+        else
+            addAlbumToQueueExecute(albumArtist, album, callback);
+
+    }
+
+    private void addAlbumToQueueExecute(String albumArtist, String album, Callback<List<String>> callback) {
 
             Channel channel = new Channel(getConnection());
 
@@ -287,9 +317,6 @@ public class Player {
                 callback.onResult(result);
             }
 
-
-        });
-
     }
 
     private Result<List<String>> addUrlsToPlaylistSync(Channel channel, String playlist, String... urls) {
@@ -306,7 +333,13 @@ public class Player {
 
     public void playAlbum(String albumArtist, String album, int pos, Callback<List<String>> callback) {
 
-        threadPool.execute(() -> {
+        if (threadPool != null)
+            threadPool.execute(() -> playAlbumExecute(albumArtist, album, pos, callback));
+        else
+            playAlbumExecute(albumArtist, album, pos, callback);
+    }
+
+    private void playAlbumExecute(String albumArtist, String album, int pos, Callback<List<String>> callback) {
 
             Channel channel = new Channel(getConnection());
 
@@ -335,18 +368,20 @@ public class Player {
                 callback.onResult(result);
             }
 
-
-        });
-
-
     }
 
     public void addPlaylistToQueue2(String playlistName, boolean clear, Callback<List<String>> callback) {
 
-        //protocol: command "load [playlist]" loads playlist to queue, ignores files without permissions, respects m3u EXTM3U tags,
-        // but don't returns valid ids or the number of successfully added songs
+        if (threadPool != null)
+            threadPool.execute(() -> addPlaylistToQueue2Execute(playlistName, clear, callback));
+        else
+            addPlaylistToQueue2Execute(playlistName, clear, callback);
 
-        threadPool.execute(() -> {
+    }
+    private void addPlaylistToQueue2Execute(String playlistName, boolean clear, Callback<List<String>> callback) {
+
+        //protocol: command "load [playlist]" loads playlist to queue, ignores files without permissions, respects m3u EXTM3U tags,
+        // but don't return valid ids or the number of successfully added songs
 
             Channel channel = new Channel(getConnection());
 
@@ -365,16 +400,18 @@ public class Player {
                 callback.onResult(result);
             }
 
-        });
-
-
     }
 
     public void addPlaylistToQueue(String playlistName, boolean clear, int pos, Callback<List<String>> callback) {
+        if (threadPool != null)
+            threadPool.execute( () -> addPlaylistToQueueExecute(playlistName, clear, pos, callback));
+        else
+            addPlaylistToQueueExecute(playlistName, clear, pos, callback);
+    }
 
-        //protocol: command "load [playlist]" loads playlist direct to queue, but don't returns valid ids or the number of successfully added songs"
+    private void addPlaylistToQueueExecute(String playlistName, boolean clear, int pos, Callback<List<String>> callback) {
 
-        threadPool.execute(() -> {
+        //protocol: command "load [playlist]" loads playlist direct to queue, but don't return valid ids or the number of successfully added songs"
 
             Channel channel = new Channel(getConnection());
 
@@ -432,19 +469,16 @@ public class Player {
                 callback.onResult(result);
             }
 
-        });
-
-
     }
 
     public void deletePlaylist(String playlist, Callback<List<String>> callback) {
         String command = String.format("rm \"%s\"", playlist );
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void renamePlaylist(String oldName, String newName, Callback<List<String>> callback) {
         String command = String.format("rename \"%s\" \"%s\"", oldName, newName);
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void addToPlaylist(Callback<List<String>> callback, String playlist, String... urls) {
@@ -454,34 +488,34 @@ public class Player {
             commands[i] = String.format("playlistadd \"%s\" \"%s\"", playlist, urls[i]);
         }
 
-        channelHelper.simpleQueryASync(callback, commands);
+        channelHelper.simpleQuery(callback, commands);
     }
 
     public void saveQueueToPlaylist(String playlist, Callback<List<String>> callback) {
         String command = String.format("save \"%s\"", playlist);
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void removeFromPlaylist(String playlist, int pos, Callback<List<String>> callback) {
         String command = String.format("playlistdelete \"%s\" %s", playlist, pos);
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void moveItemInPlaylist(String playlist, int fromPos, int toPos, Callback<List<String>> callback) {
 
         String command = String.format("playlistmove \"%s\" %s %s", playlist, fromPos, toPos);
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
     public void moveItemInQueue(int from, int to, Callback<List<String>> callback) {
         String command = String.format("move %s %s", from, to);
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void removeItemFromQueue(int pos, Callback<List<String>> callback) {
         String command = "delete " + pos;
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
@@ -489,7 +523,7 @@ public class Player {
 
         String command = String.format("delete %s:%s", startPos, endPos);
         System.out.println("PLAYER remove Items from Queue " + command);
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
@@ -497,41 +531,41 @@ public class Player {
 
     public void play(int pos, Callback<List<String>> callback) {
         String command = "play " + pos;
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
     public void playid(int id, Callback<List<String>> callback) {
         String command = "playid " + id;
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
 
     public void play(Callback<List<String>> callback) {
         String command = "play";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
     public void pauseResume(Callback<List<String>> callback) {
         String command = "pause";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void stop(Callback<List<String>> callback) {
         String command = "stop";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void next(Callback<List<String>> callback) {
         String command = "next";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
     public void previous(Callback<List<String>> callback) {
         String command = "previous";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
@@ -540,13 +574,13 @@ public class Player {
         if (relative && second>0)
             pos = "+" + pos;
         String command = "seekcur " + pos;
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void seekIdTo(int id, int second, Callback<List<String>> callback) {
 
         String command = "seekid " + id + " " + second;
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
@@ -562,7 +596,7 @@ public class Player {
             callback.onResult(result);
         };
 
-        channelHelper.simpleQueryASync(listCallback, command);
+        channelHelper.simpleQuery(listCallback, command);
 
 
     }
@@ -579,7 +613,7 @@ public class Player {
             callback.onResult(result);
         };
 
-        channelHelper.simpleQueryASync(listCallback, command);
+        channelHelper.simpleQuery(listCallback, command);
 
     }
 
@@ -595,14 +629,14 @@ public class Player {
             callback.onResult(result1);
         };
 
-        channelHelper.simpleQueryASync(callback1, command);
+        channelHelper.simpleQuery(callback1, command);
 
     }
 
     public void updateDatabase(Callback<List<String>> callback) {
 
         String command = "update";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
@@ -618,46 +652,46 @@ public class Player {
             callback.onResult(result1);
         };
 
-        channelHelper.simpleQueryASync(callback1, command);
+        channelHelper.simpleQuery(callback1, command);
 
     }
 
     public void toggleAudioOutput(int id, Callback<List<String>> callback) {
 
         String command = "toggleoutput " + id;
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
     public void repeat(Callback<List<String>> callback, boolean repeat) {
         String command = "repeat " + ((repeat) ? "1" : "0");
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void consume(Callback<List<String>> callback, boolean consume) {
         String command = "consume " + ((consume) ? "1" : "0");
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void random(Callback<List<String>> callback, boolean random) {
         String command = "random " + ((random) ? "1" : "0");
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void single(Callback<List<String>> callback, boolean single) {
         String command = "single " + ((single) ? "1" : "0");
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
     }
 
     public void shuffleQueue(Callback<List<String>> callback) {
         String command = "shuffle";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 
     public void clearQueue(Callback<List<String>> callback) {
         String command = "clear";
-        channelHelper.simpleQueryASync(callback, command);
+        channelHelper.simpleQuery(callback, command);
 
     }
 

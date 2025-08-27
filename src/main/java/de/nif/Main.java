@@ -6,7 +6,9 @@ import de.nif.data.Result;
 
 public class Main {
     public static void main(String[] args) {
-        Player player = new Player();
+        Player player = new Player(0);
+
+        //Example implementation
 
         String host = "raspimpd3";
         int port = 6600;

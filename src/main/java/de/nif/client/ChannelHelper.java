@@ -21,7 +21,6 @@ public class ChannelHelper {
     }
 
 
-
     public Result<List<String>> query(Channel channel, String... commands) {
 
         Result<List<String>> result = new Result<>();
@@ -53,7 +52,7 @@ public class ChannelHelper {
 
     }
 
-    public Result<List<String>> simpleQuery(String... commands) {
+    private void simpleQueryExecute(Player.Callback<List<String>> callback, String... commands) {
 
         Channel channel = new Channel(connection);
 
@@ -61,20 +60,21 @@ public class ChannelHelper {
 
         channel.close();
 
-        return result;
+        if (callback != null)
+            callback.onResult(result);
+
     }
 
-    public void simpleQueryASync(Player.Callback<List<String>> callback, String... commands) {
+    public void simpleQuery(Player.Callback<List<String>> callback, String... commands) {
 
-        threadPool.execute(() -> {
+        if (callback == null)
+            return;
 
-            Result<List<String>> result = simpleQuery(commands);
-            System.out.println(result);
-            if (callback != null)
-                callback.onResult(result);
-
-
-        });
+        if (threadPool != null)
+            threadPool.execute(() ->
+                    simpleQueryExecute(callback, commands));
+        else
+            simpleQueryExecute(callback, commands);
 
     }
 
