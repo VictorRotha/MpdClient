@@ -90,8 +90,6 @@ public class Channel {
 
 
     public void close() {
-
-        System.out.println("channel close()");
         if (socket != null && !socket.isClosed()) {
             try {
                 socket.close();

@@ -67,8 +67,6 @@ public class ChannelHelper {
 
     public void simpleQuery(Player.Callback<List<String>> callback, String... commands) {
 
-        if (callback == null)
-            return;
 
         if (threadPool != null)
             threadPool.execute(() ->
