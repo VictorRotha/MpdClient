@@ -80,22 +80,19 @@ public class Player {
     }
 
 
+    /**
+     * Sends one or more commands to the mpd server and return the result via the provided callback.
+     *
+     * @param callback returns the result as list of strings
+     * @param commands one or more commands to execute on the server.
+     */
     public void query(Callback<List<String>> callback, String... commands) {
 
         channelHelper.simpleQuery(callback, commands);
 
     }
 
-    public void idle(Callback<List<String>> callback) {
 
-            Channel channel = new Channel(connection, false);
-            Result<List<String>> result = channelHelper.query(channel, "idle");
-            channel.close();
-
-            if (callback != null) {
-                callback.onResult(result);
-            }
-    }
 
 
     public void queryQueue(Callback<List<String>> callback) {
@@ -103,8 +100,6 @@ public class Player {
         channelHelper.simpleQuery(callback, command);
 
     }
-
-
 
     public void queryPlaylists(Callback<List<String>> callback) {
         String command = "listplaylists";
@@ -124,22 +119,45 @@ public class Player {
     public void queryArtists(Callback<List<String>> callback) {
         String command = "list artist";
         channelHelper.simpleQuery(callback, command);
-
     }
 
     public void queryAlbumsByArtist(String albumArtist, Callback<List<String>> callback) {
         String command = "list album albumartist \"" + albumArtist + "\"";
         channelHelper.simpleQuery(callback, command);
-
     }
 
     public void querySongsByAlbum(String albumArtist, String album, Callback<List<String>> callback) {
         String command = String.format("find \"((albumartist == \\\"%s\\\") AND (album == \\\"%s\\\"))\"", albumArtist, album);
         channelHelper.simpleQuery(callback, command);
+    }
+
+    /** replace the queue with all songs by the artist and plays the first song.
+     * 
+     * @param artist Artist
+     * @param callback provides the list of files added to the queue.
+     */
+    public void playArtist(String artist, Callback<List<String>> callback) {
+        addArtistToQueue(artist, true, 0, callback);
+    }
+    
+    /**
+     * adds all songs by the artist to the queue
+     *
+     * @param artist Artist
+     * @param clear if true, the queue will be replaced by the new songs, otherwise the songs will be added at the end of the queue.
+     * @param pos if > -1, the song at this queue pos will be played after adding the songs
+     * @param callback provides the list of files added to the queue.
+     */
+    public void addArtistToQueue(String artist, boolean clear, int pos, Callback<List<String>> callback) {
+
+        if (threadPool != null)
+            threadPool.execute(() -> addArtistToQueueExecute(artist, clear, pos, callback));
+        else
+            addArtistToQueueExecute(artist, clear, pos, callback);
 
     }
 
-    private Result<List<String>> queryArtistSongFilenamesSync(Channel channel, String artist) {
+    private Result<List<String>> queryFilenamesByArtistSync(Channel channel, String artist) {
 
         String command = String.format("list file \"(artist == \\\"%s\\\")\"", artist);
 
@@ -152,20 +170,11 @@ public class Player {
 
     }
 
-    public void addArtistToQueue(String artist, boolean clear, int pos, Callback<List<String>> callback) {
-
-        if (threadPool != null)
-            threadPool.execute(() -> addArtistToQueueExecute(artist, clear, pos, callback));
-        else
-            addArtistToQueueExecute(artist, clear, pos, callback);
-
-    }
-
     private void addArtistToQueueExecute(String artist, boolean clear, int pos, Callback<List<String>> callback) {
 
             Channel channel = new Channel(getConnection());
 
-            Result<List<String>> result = queryArtistSongFilenamesSync(channel, artist);
+            Result<List<String>> result = queryFilenamesByArtistSync(channel, artist);
 
             if (result.type == Result.ResultType.ERROR || result.message.isEmpty()) {
                 if (callback != null)
@@ -194,9 +203,7 @@ public class Player {
     }
 
 
-
-
-    private Result<List<String>> queryAlbumSongFilenamesSync(Channel channel, String albumArtist, String album) {
+    private Result<List<String>> queryFilenamesByAlbum(Channel channel, String albumArtist, String album) {
 
         String command = String.format("list file \"((albumartist == \\\"%s\\\") AND (album == \\\"%s\\\"))\"", albumArtist, album);
 
@@ -210,7 +217,11 @@ public class Player {
 
     }
 
-
+    /**adds songs provided as filenames to the queue
+     *
+     * @param filenames files to bew added
+     * @param callback provides the list of files added to the queue
+     */
     public void addSongsToQueue(String[] filenames, Callback<List<String>> callback) {
         StringBuilder builder = new StringBuilder();
         for (String filename : filenames) {
@@ -219,6 +230,92 @@ public class Player {
         String command = builder.toString();
 
         channelHelper.simpleQuery(callback, command.trim());
+    }
+
+
+
+    /**Adds all songs by the given album to the queue and plays the first song.
+     *
+     * @param albumArtist Album artist
+     * @param album Album name
+     * @param callback provides the list of songs added to the queue
+     */
+    public void playAlbum(String albumArtist, String album, Callback<List<String>> callback) {
+        
+        addAlbumToQueue(albumArtist, album, true, 0, callback);
+    }
+    
+    /**adds all songs by the given album to the queue
+     *
+     * @param albumArtist Album artist
+     * @param album Album name
+     * @param clear replaces the queue withs the album
+     * @param pos queue pos to be played after adding the album 
+     * @param callback provides the list of songs added to the queue
+     */
+    public void addAlbumToQueue(String albumArtist, String album, Boolean clear, int pos, Callback<List<String>> callback) {
+
+        if (threadPool != null)
+            threadPool.execute(() -> addAlbumToQueueExecute(albumArtist, album, clear, pos, callback));
+        else
+            addAlbumToQueueExecute(albumArtist, album, clear, pos, callback);
+
+    }
+
+    private void addAlbumToQueueExecute(String albumArtist, String album, Boolean clear, int pos, Callback<List<String>> callback) {
+
+        Channel channel = new Channel(getConnection());
+
+        Result<List<String>> result = queryFilenamesByAlbum(channel, albumArtist, album);
+
+        if (result.type == Result.ResultType.ERROR) {
+            if (callback != null)
+                callback.onResult(result);
+            return;
+        }
+
+        ArrayList<String> commandList = new ArrayList<>();
+
+        if (clear)
+            commandList.add("clear");
+        
+        for (String s : result.message) {
+            commandList.add("addid \"" + s + "\"");
+        }
+
+        if (pos > -1)
+            commandList.add("play " + pos);
+
+
+        result = channelHelper.query(channel, commandList.toArray(new String[0]));
+
+        channel.close();
+
+        if (callback != null) {
+            result.message = Parser.resultToList(result.message);
+            callback.onResult(result);
+        }
+
+    }
+
+
+    public void moveItemInQueue(int from, int to, Callback<List<String>> callback) {
+        String command = String.format("move %s %s", from, to);
+        channelHelper.simpleQuery(callback, command);
+    }
+
+    public void removeItemFromQueue(int pos, Callback<List<String>> callback) {
+        String command = "delete " + pos;
+        channelHelper.simpleQuery(callback, command);
+
+    }
+
+    public void removeItemsFromQueue(int startPos, int endPos, Callback<List<String>> callback) {
+
+        String command = String.format("delete %s:%s", startPos, endPos);
+        System.out.println("PLAYER remove Items from Queue " + command);
+        channelHelper.simpleQuery(callback, command);
+
     }
 
     public void addAlbumToPlaylist(String albumArtist, String album, String playlist, Callback<List<String>> callback) {
@@ -233,12 +330,12 @@ public class Player {
 
             Channel channel = new Channel(getConnection());
 
-            Result<List<String>> result = queryAlbumSongFilenamesSync(channel, albumArtist, album);
+            Result<List<String>> result = queryFilenamesByAlbum(channel, albumArtist, album);
 
             List<String> urls = result.message;
 
             if (result.type == Result.ResultType.OK) {
-                result = addUrlsToPlaylistSync(channel, playlist, result.message.toArray(new String[0]));
+                result = addFilenamesToPlaylistSync(channel, playlist, result.message.toArray(new String[0]));
                 if (result.type == Result.ResultType.OK) {
                     result.message = urls;
                 }
@@ -250,6 +347,7 @@ public class Player {
                 callback.onResult(result);
 
     }
+
     public void addArtistToPlaylist(String artist, String playlist, Callback<List<String>> callback) {
 
         if (threadPool !=  null)
@@ -262,12 +360,12 @@ public class Player {
 
             Channel channel = new Channel(getConnection());
 
-            Result<List<String>> result = queryArtistSongFilenamesSync(channel, artist);
+            Result<List<String>> result = queryFilenamesByArtistSync(channel, artist);
 
             List<String> urls = result.message;
 
             if (result.type == Result.ResultType.OK) {
-                result = addUrlsToPlaylistSync(channel, playlist, result.message.toArray(new String[0]));
+                result = addFilenamesToPlaylistSync(channel, playlist, result.message.toArray(new String[0]));
                 if (result.type == Result.ResultType.OK) {
                     result.message = urls;
                 }
@@ -279,48 +377,7 @@ public class Player {
                 callback.onResult(result);
     }
 
-
-
-
-    public void addAlbumToQueue(String albumArtist, String album, Callback<List<String>> callback) {
-
-        if (threadPool != null)
-            threadPool.execute(() -> addAlbumToQueueExecute(albumArtist, album, callback));
-        else
-            addAlbumToQueueExecute(albumArtist, album, callback);
-
-    }
-
-    private void addAlbumToQueueExecute(String albumArtist, String album, Callback<List<String>> callback) {
-
-            Channel channel = new Channel(getConnection());
-
-            Result<List<String>> result = queryAlbumSongFilenamesSync(channel, albumArtist, album);
-
-            if (result.type == Result.ResultType.ERROR) {
-                if (callback != null)
-                    callback.onResult(result);
-                return;
-            }
-
-            ArrayList<String> commandList = new ArrayList<>();
-            for (String s : result.message) {
-                commandList.add("addid \"" + s + "\"");
-            }
-
-            result = channelHelper.query(channel, commandList.toArray(new String[0]));
-
-            channel.close();
-
-            if (callback != null) {
-                result.message = Parser.resultToList(result.message);
-                callback.onResult(result);
-            }
-
-    }
-
-    private Result<List<String>> addUrlsToPlaylistSync(Channel channel, String playlist, String... urls) {
-
+    private Result<List<String>> addFilenamesToPlaylistSync(Channel channel, String playlist, String... urls) {
 
         String[] commands = new String[urls.length];
         for (int i = 0; i < urls.length; i++) {
@@ -331,57 +388,18 @@ public class Player {
 
     }
 
-    public void playAlbum(String albumArtist, String album, int pos, Callback<List<String>> callback) {
+    public void addPlaylistToQueue(String playlistName, boolean clear, Callback<List<String>> callback) {
 
         if (threadPool != null)
-            threadPool.execute(() -> playAlbumExecute(albumArtist, album, pos, callback));
+            threadPool.execute(() -> addPlaylistToQueueExecute(playlistName, clear, callback));
         else
-            playAlbumExecute(albumArtist, album, pos, callback);
-    }
-
-    private void playAlbumExecute(String albumArtist, String album, int pos, Callback<List<String>> callback) {
-
-            Channel channel = new Channel(getConnection());
-
-            Result<List<String>> result = queryAlbumSongFilenamesSync(channel, albumArtist, album);
-
-            if (result.type == Result.ResultType.ERROR) {
-                if (callback != null)
-                    callback.onResult(result);
-                return;
-            }
-
-            ArrayList<String> commandList = new ArrayList<>();
-            commandList.add("clear");
-            for (String s : result.message) {
-                commandList.add("addid \"" + s + "\"");
-            }
-            if (pos > -1)
-                commandList.add("play " + pos);
-
-            result = channelHelper.query(channel, commandList.toArray(new String[0]));
-
-            channel.close();
-
-            if (callback != null) {
-                result.message = Parser.resultToList(result.message);
-                callback.onResult(result);
-            }
+            addPlaylistToQueueExecute(playlistName, clear, callback);
 
     }
-
-    public void addPlaylistToQueue2(String playlistName, boolean clear, Callback<List<String>> callback) {
-
-        if (threadPool != null)
-            threadPool.execute(() -> addPlaylistToQueue2Execute(playlistName, clear, callback));
-        else
-            addPlaylistToQueue2Execute(playlistName, clear, callback);
-
-    }
-    private void addPlaylistToQueue2Execute(String playlistName, boolean clear, Callback<List<String>> callback) {
+    private void addPlaylistToQueueExecute(String playlistName, boolean clear, Callback<List<String>> callback) {
 
         //protocol: command "load [playlist]" loads playlist to queue, ignores files without permissions, respects m3u EXTM3U tags,
-        // but don't return valid ids or the number of successfully added songs
+        //but don't return valid ids or the number of successfully added songs
 
             Channel channel = new Channel(getConnection());
 
@@ -402,74 +420,7 @@ public class Player {
 
     }
 
-    public void addPlaylistToQueue(String playlistName, boolean clear, int pos, Callback<List<String>> callback) {
-        if (threadPool != null)
-            threadPool.execute( () -> addPlaylistToQueueExecute(playlistName, clear, pos, callback));
-        else
-            addPlaylistToQueueExecute(playlistName, clear, pos, callback);
-    }
 
-    private void addPlaylistToQueueExecute(String playlistName, boolean clear, int pos, Callback<List<String>> callback) {
-
-        //protocol: command "load [playlist]" loads playlist direct to queue, but don't return valid ids or the number of successfully added songs"
-
-            Channel channel = new Channel(getConnection());
-
-            String command = "listplaylistinfo \"" + playlistName + "\"";
-
-            Result<List<String>> result = channelHelper.query(channel, command);
-
-            if (result.type == Result.ResultType.ERROR) {
-                if (callback != null)
-                    callback.onResult(result);
-                return;
-            }
-
-            System.out.println("PlaylistSongs: " + result);
-
-            for (String line : result.message) {
-                System.out.println(line);
-            }
-
-            ArrayList<String> commandList = new ArrayList<>();
-            if (clear)
-                commandList.add("clear");
-
-            int noFiles = 0;
-            int filesAdded = 0;
-            String file = null;
-            for (String line : result.message) {
-                if (line.startsWith("file:")) {
-                    file = line.split(": ", 2)[1] + "\"";
-                    noFiles++;
-                    if (file.startsWith("http")) {
-                        commandList.add("addid \"" + file);
-                        filesAdded++;
-                        file = null;
-                    }
-
-                } else if (line.startsWith("Last-Modified") && file != null) {
-                    commandList.add("addid \"" + file);
-                    filesAdded++;
-                    file = null;
-                }
-            }
-
-            if (pos > -1 && filesAdded == noFiles)
-                commandList.add("play " + pos);
-
-            System.out.println("addPlaylistoQueue: " + commandList);
-
-            result = channelHelper.query(channel, commandList.toArray(new String[0]));
-
-            channel.close();
-
-            if (callback != null) {
-                result.message = Parser.resultToList(result.message);
-                callback.onResult(result);
-            }
-
-    }
 
     public void deletePlaylist(String playlist, Callback<List<String>> callback) {
         String command = String.format("rm \"%s\"", playlist );
@@ -508,31 +459,9 @@ public class Player {
 
     }
 
-    public void moveItemInQueue(int from, int to, Callback<List<String>> callback) {
-        String command = String.format("move %s %s", from, to);
-        channelHelper.simpleQuery(callback, command);
-    }
-
-    public void removeItemFromQueue(int pos, Callback<List<String>> callback) {
-        String command = "delete " + pos;
-        channelHelper.simpleQuery(callback, command);
-
-    }
-
-    public void removeItemsFromQueue(int startPos, int endPos, Callback<List<String>> callback) {
-
-        String command = String.format("delete %s:%s", startPos, endPos);
-        System.out.println("PLAYER remove Items from Queue " + command);
-        channelHelper.simpleQuery(callback, command);
-
-    }
-
-
-
     public void play(int pos, Callback<List<String>> callback) {
         String command = "play " + pos;
         channelHelper.simpleQuery(callback, command);
-
     }
 
     public void playid(int id, Callback<List<String>> callback) {
@@ -694,6 +623,159 @@ public class Player {
         channelHelper.simpleQuery(callback, command);
 
     }
+
+
+
+    /** Replaces the queue with the album and plays at the given position if pos > -1
+     * <p> 
+     * DEPRECATED: use playAlbum(albumArtist, album, callback) or addAlbumToQueue(...) instead.
+     * <p> 
+     * @param albumArtist album artist
+     * @param album album name
+     * @param pos queue pos to be played after adding the album 
+     * @param callback provides the list of songs added to the queue
+     */
+    @Deprecated
+    public void playAlbum(String albumArtist, String album, int pos, Callback<List<String>> callback) {
+
+        if (threadPool != null)
+            threadPool.execute(() -> playAlbumExecute(albumArtist, album, pos, callback));
+        else
+            playAlbumExecute(albumArtist, album, pos, callback);
+    }
+
+    @Deprecated
+    private void playAlbumExecute(String albumArtist, String album, int pos, Callback<List<String>> callback) {
+
+        Channel channel = new Channel(getConnection());
+
+        Result<List<String>> result = queryFilenamesByAlbum(channel, albumArtist, album);
+
+        if (result.type == Result.ResultType.ERROR) {
+            if (callback != null)
+                callback.onResult(result);
+            return;
+        }
+
+        ArrayList<String> commandList = new ArrayList<>();
+        commandList.add("clear");
+        for (String s : result.message) {
+            commandList.add("addid \"" + s + "\"");
+        }
+        if (pos > -1)
+            commandList.add("play " + pos);
+
+        result = channelHelper.query(channel, commandList.toArray(new String[0]));
+
+        channel.close();
+
+        if (callback != null) {
+            result.message = Parser.resultToList(result.message);
+            callback.onResult(result);
+        }
+
+    }
+
+
+    @Deprecated
+    public void idle(Callback<List<String>> callback) {
+
+        Channel channel = new Channel(connection, false);
+        Result<List<String>> result = channelHelper.query(channel, "idle");
+        channel.close();
+
+        if (callback != null) {
+            callback.onResult(result);
+        }
+    }
+
+    /**
+     * adds playlist to queue
+     * <p>
+     * DEPRECATED: use addPlaylistToQueue2()
+     * <p>
+     * @param playlistName name of the playlist
+     * @param clear clears the queue before adding the songs
+     * @param pos plays queue at pos if pos > -1
+     * @param callback RESULT.OK or RESULT.ERROR
+     */
+    @Deprecated
+    public void addPlaylistToQueueLegacy(String playlistName, boolean clear, int pos, Callback<List<String>> callback) {
+        if (threadPool != null)
+            threadPool.execute( () -> addPlaylistToQueueLegacyExecute(playlistName, clear, pos, callback));
+        else
+            addPlaylistToQueueLegacyExecute(playlistName, clear, pos, callback);
+    }
+
+    @Deprecated
+    private void addPlaylistToQueueLegacyExecute(String playlistName, boolean clear, int pos, Callback<List<String>> callback) {
+
+        //protocol: command "load [playlist]" loads playlist direct to queue, but don't return valid ids or the number of successfully added songs"
+
+        Channel channel = new Channel(getConnection());
+
+        String command = "listplaylistinfo \"" + playlistName + "\"";
+
+        Result<List<String>> result = channelHelper.query(channel, command);
+
+        if (result.type == Result.ResultType.ERROR) {
+            if (callback != null)
+                callback.onResult(result);
+            return;
+        }
+
+        System.out.println("PlaylistSongs: " + result);
+
+        for (String line : result.message) {
+            System.out.println(line);
+        }
+
+        ArrayList<String> commandList = getAddPlaylistCommands(clear, pos, result);
+
+        System.out.println("addPlaylistoQueue: " + commandList);
+
+        result = channelHelper.query(channel, commandList.toArray(new String[0]));
+
+        channel.close();
+
+        if (callback != null) {
+            result.message = Parser.resultToList(result.message);
+            callback.onResult(result);
+        }
+
+    }
+
+    @Deprecated
+    private ArrayList<String> getAddPlaylistCommands(boolean clear, int pos, Result<List<String>> result) {
+        ArrayList<String> commandList = new ArrayList<>();
+        if (clear)
+            commandList.add("clear");
+
+        int noFiles = 0;
+        int filesAdded = 0;
+        String file = null;
+        for (String line : result.message) {
+            if (line.startsWith("file:")) {
+                file = line.split(": ", 2)[1] + "\"";
+                noFiles++;
+                if (file.startsWith("http")) {
+                    commandList.add("addid \"" + file);
+                    filesAdded++;
+                    file = null;
+                }
+
+            } else if (line.startsWith("Last-Modified") && file != null) {
+                commandList.add("addid \"" + file);
+                filesAdded++;
+                file = null;
+            }
+        }
+
+        if (pos > -1 && filesAdded == noFiles)
+            commandList.add("play " + pos);
+        return commandList;
+    }
+
 
 
 }
